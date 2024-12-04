@@ -1,0 +1,265 @@
+---
+title: "Cannabis Referendum Analysis"
+author: "Chathurangi Godahewa Gamage"
+date: "2024-08-05"
+output: pdf_document
+---
+
+
+
+
+## Load The Cannabis Referendum Data set
+
+```{r setup, include=FALSE}
+# Load necessary libraries
+library(tidyverse)
+library(dplyr)
+library(kableExtra)
+library(ggplot2)
+library(broom)
+library(mice)
+library(tinytex)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+The Cannabis Referendum Data set consist of 1063 rows and 3 columns. It includes the following variables:
+Age: An integer variable representing the age of the respondents. The ages range from 15 to 85, with a mean age of 47.79 years. Gender: A categorical variable indicating the gender of the respondents. The categories include "Female", "Male", "Transgender Female (Male to Female: MTF)", "Transgender Male (Female to Male: FTM)", "Genderqueer, neither exclusively male nor female", and "Other (Please State)". There are a few entries with missing or unspecified gender.
+Referendum: An integer variable indicating whether the respondent voted 'yes' (1) or 'no' (0) in the cannabis referendum. 
+The dataset highlights a broad demographic coverage of the survey, with a variety of age groups and gender identities represented. However, the presence of missing data in the age and referendum variables needs to be addressed to ensure accurate analysis. This dataset provides a valuable basis for understanding the demographic factors influencing support for cannabis legalization.
+
+
+
+```{r, include=FALSE}
+# Load the dataset
+data <- read.csv("referendum_survey_lab_version.csv")
+
+# Explore the dataset
+glimpse(data)
+summary(data)
+head(data)
+unique(data$gender)
+```
+
+## Table On Misssingness
+
+```{r}
+# Replace empty strings with NA in the gender column
+data <- data %>%
+  mutate(gender = ifelse(gender == "", NA, gender))
+
+# Check for missing data
+missing_data <- data %>%
+  summarise(across(everything(), ~ sum(is.na(.)))) %>%
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "Missing")
+
+# Print the table of missing data with title and centered content
+missing_data %>%
+  kable(
+    caption = "Table of Missing Data",
+    col.names = c("Variable", "Missing"),
+    align = "c"
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"), 
+    full_width = FALSE, 
+    position = "center"
+  )
+```
+ From the table I have observed following,
+ Age-There are 12 missing values for the age variable. This indicates that a small number of respondents did not report their age.
+ Gender-There are 18 missing values for the gender variable. 
+ Referendum-There are 85 missing values for the referendum variable. This significant amount of missing data indicates that many respondents did not disclose their voting preference.
+
+
+## Visualisation on Demographics
+
+```{r}
+# Combine categories with few observations into "Other"
+data <- data %>%
+  mutate(gender = ifelse(gender %in% c("Other (Please State)", 
+                                       "Genderqueer, neither exclusively male nor female",
+                                       "Transgender Male (Female to Male; FT)", 
+                                       "Transgender Female (Male to Female; MT)"),
+                         "Other", gender))
+
+# Create a visualization of age distribution across genders
+ggplot(data, aes(x = age)) +
+  geom_density() +
+  facet_wrap(~ gender, scales = "free_y") +
+  labs(
+    title = "Age Distribution Across Genders",
+    x = "Age",
+    y = "Density"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 6, face = "bold"),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5)
+  )
+```
+
+ The age distribution across different genders shows that the majority of respondents are middle-aged, with notable peaks around 30-50 years for both males and females. The female and male categories have the most balanced distributions, while other gender categories (e.g., transgender female, transgender male) have fewer observations, limiting the reliability of conclusions for these groups. The low number of responses in some categories indicates potential biases and suggests a need for more inclusive data collection in future surveys. To enhance representativeness, targeted efforts to increase participation from underrepresented groups are recommended. Overall, the concentration of middle-aged respondents highlights this demographic as a key focus for analysis and policy-making.
+
+
+
+## Inline Reporting of Proportions
+
+```{r, include=FALSE, echo=FALSE}
+# Filter out rows with missing data for complete case analysis
+complete_cases <- data %>%
+  filter(!is.na(referendum) & !is.na(age) & !is.na(gender))
+
+# Calculate the proportion of 'yes' voters
+proportion_yes <- mean(complete_cases$referendum == 1, na.rm = TRUE)
+proportion_yes
+```
+
+The overall proportion of people who supported legalization is `r round(proportion_yes, 3)`
+
+The overall percentage of people who supported legalization is `r round(proportion_yes * 100, 2)`%.
+
+ Based on the analysis of complete cases, the proportion of respondents who supported the legalization of cannabis is approximately 59.57%. This indicates that nearly 60% of the surveyed individuals are in favor of legalizing cannabis, suggesting a majority support within the sampled population. However, it's important to note that this proportion is based on complete case analysis, which means it only includes respondents who provided their age, gender, and voting preference without any missing data.
+
+## Conduct a Logistic Regression Model
+
+```{r}
+# Conduct a logistic regression model
+ref_model_complete <- glm(referendum ~ age + gender, data = complete_cases, family = binomial)
+
+# Tidy the results
+tidy_ref_model_complete <- tidy(ref_model_complete) %>%
+  mutate_if(is.numeric, round, 4)  # Round numeric values to 4 decimal places
+
+# Present the results in a clean table using kableExtra
+tidy_ref_model_complete %>%
+  kable(format = "latex", escape = TRUE, booktabs = TRUE, caption = "Logistic Regression Results for Complete Cases") %>%
+  kable_styling(latex_options = c("striped", "hold_position"), full_width = FALSE)
+
+```
+
+ The logistic regression model was conducted to determine the demographic factors that are associated with the likelihood of voting 'yes' in the referendum. The model includes age and gender as predictors.
+
+ Intercept: The intercept term (2.2451) represents the log-odds of voting 'yes' when all predictor variables (age and gender) are at their reference levels. This is a baseline probability from which the effects of the predictors are adjusted.
+
+ Age: The coefficient for age (-0.0296) is negative and statistically significant (p-value < 0.0001), indicating that older respondents are less likely to vote 'yes' on the referendum. Specifically, for each additional year of age, the log-odds of voting 'yes' decrease by 0.0296, holding other factors constant. This suggests a trend where younger respondents are more supportive of cannabis legalization.
+
+#### Gender:
+
+ Female: The coefficient for gender (Female) is -0.2310 with a p-value of 0.7440, indicating that females are slightly less likely than the reference gender (possibly the 'Other' category) to vote 'yes', but this difference is not statistically significant.
+ Male: The coefficient for gender (Male) is -0.6423 with a p-value of 0.3646, suggesting that males are less likely than the reference gender to vote 'yes', but again, this result is not statistically significant.
+ Other: The coefficient for gender (Other) is 0.7196 with a p-value of 0.4938, indicating a higher likelihood of voting 'yes' compared to the reference gender, though this result is also not statistically significant.
+ Transgender Female (Male to Female: MTF): The coefficient is 13.1497, with an extremely large standard error (608.3672) and a p-value of 0.9828, indicating that this result is highly uncertain and not statistically significant.
+ Transgender Male (Female to Male: FTM): The coefficient is 12.9149, also with a large standard error (621.5597) and a p-value of 0.9834, suggesting this result is not statistically significant.
+ he logistic regression analysis shows that age is a significant predictor of voting behavior in the cannabis referendum, with younger respondents being more likely to support legalization. Gender, on the other hand, does not appear to be a significant predictor in this model, as indicated by the high p-values for all gender categories. The high standard errors and non-significant results for transgender categories suggest that the sample size for these groups may be too small to draw reliable conclusions. Overall, these findings highlight the importance of age as a key demographic factor in the support for cannabis legalization, while gender differences remain inconclusive based on the available data.
+
+
+
+
+## Proportion of 'Yes' Voters (Imputed Cases)
+
+
+```{r,echo=FALSE,include=FALSE}
+# Run multiple imputation
+referendum_imputed <- mice(data, m = 5, method = 'pmm', seed = 123)
+
+# Calculate the proportion of 'yes' voters in the imputed datasets
+imputed_data <- complete(referendum_imputed, "long")
+proportion_yes_imputed <- mean(imputed_data$referendum == 1, na.rm = TRUE)
+proportion_yes_imputed
+```
+
+The overall proportion of people who supported legalization is `r round(proportion_yes_imputed, 3)`
+
+The overall percentage of people who supported legalization is `r round(proportion_yes_imputed * 100, 2)`%.
+
+ Based on the imputed data, the proportion of respondents who supported the legalization of cannabis is approximately 60.48%. This is slightly higher than the proportion calculated from the complete cases (59.57%), suggesting that imputing the missing data did not drastically alter the overall level of support. This result provides a more comprehensive view by including all available data, addressing the potential bias from missing responses.
+
+## Logistic Regression Analysis (Imputed Cases)
+
+```{r}
+# Fit the logistic regression model on each of the imputed datasets
+logistic_models_imputed <- with(referendum_imputed, glm(referendum ~ age + gender, family = binomial))
+
+# Pool the results of the logistic regression models
+pooled_results_imputed <- pool(logistic_models_imputed)
+
+# Tidy the pooled results and select relevant columns
+tidy_ref_model_imputed <- tidy(pooled_results_imputed) %>%
+  select(term, estimate, std.error, statistic, p.value) %>%
+  mutate_if(is.numeric, round, 4)  # Round numeric values to 4 decimal places
+
+# Present the results in a clean table using kableExtra
+tidy_ref_model_imputed %>%
+  kable(format = "latex", escape = TRUE, booktabs = TRUE, caption = "Logistic Regression Results for Imputed Cases") %>%
+  kable_styling(latex_options = c("striped", "hold_position"), full_width = FALSE)
+
+```
+ The logistic regression model for the imputed cases aims to identify the demographic factors associated with the likelihood of voting 'yes' in the referendum. The model includes age and gender as predictors.
+
+ Intercept: The intercept term (2.0355) represents the log-odds of voting 'yes' when all predictor variables (age and gender) are at their reference levels. This provides a baseline probability from which the effects of the predictors are adjusted.
+
+ Age: The coefficient for age (-0.0300) is negative and statistically significant (p-value < 0.0001), indicating that older respondents are less likely to vote 'yes' on the referendum. Specifically, for each additional year of age, the log-odds of voting 'yes' decrease by 0.0300, holding other factors constant. This consistent finding with the complete case analysis reinforces the trend that younger respondents are more supportive of cannabis legalization.
+
+### Gender:
+
+ Female: The coefficient for gender (Female) is 0.0179 with a p-value of 0.9764, indicating that females are slightly more likely than the reference gender (possibly the 'Other' category) to vote 'yes', but this difference is not statistically significant.
+ Male: The coefficient for gender (Male) is -0.3903 with a p-value of 0.5260, suggesting that males are less likely than the reference gender to vote 'yes', but this result is not statistically significant.
+Other: The coefficient for gender (Other) is 0.9023 with a p-value of 0.3754, indicating a higher likelihood of voting 'yes' compared to the reference gender, though this result is also not statistically significant.
+Transgender Female (Male to Female: MTF): The coefficient is 13.3712, with an extremely large standard error (608.1531) and a p-value of 0.9825, indicating that this result is highly uncertain and not statistically significant.
+ Transgender Male (Female to Male: FTM): The coefficient is 13.1324, also with a large standard error (621.5209) and a p-value of 0.9831, suggesting this result is not statistically significant.
+
+ The logistic regression analysis using imputed data confirms that age is a significant predictor of voting behavior in the cannabis referendum, with younger respondents being more likely to support legalization. Similar to the complete case analysis, gender does not appear to be a significant predictor in this model, as indicated by the high p-values for all gender categories. The high standard errors and non-significant results for transgender categories suggest that the sample size for these groups remains too small to draw reliable conclusions. Overall, these findings reinforce the importance of age as a key demographic factor in the support for cannabis legalization, while gender differences remain inconclusive based on the available data.
+
+## Conclusion
+
+ Our analysis reveals that approximately 60% of respondents support the legalization of cannabis. Logistic regression results indicate that age is a significant predictor, with younger individuals being more likely to vote 'yes'. Gender, however, does not show a statistically significant impact on voting behavior. These findings suggest that advocacy and policy efforts might benefit from focusing on younger demographics to garner support. The consistency between complete case and imputed data analyses reinforces the robustness of these results. Future surveys should aim to increase representation from underrepresented gender groups to enhance the reliability of demographic insights.
+
+## Extra for experts
+
+### Data Quality and Potential Bias
+
+### Sampling Bias:
+
+The survey's representativeness could be questioned due to the uneven distribution of responses across different gender categories. While there is a substantial amount of data from males and females, other gender categories such as transgender individuals have significantly fewer responses. This discrepancy suggests that the sample may not fully capture the diversity of the population, leading to potential sampling bias.
+
+### Imputation Quality:
+
+ The use of multiple imputation with the mice package helps mitigate the bias introduced by missing data, by making informed guesses based on the observed data. However, the reliability of the imputed data depends on the assumption that data are missing at random (MAR). If this assumption does not hold, the imputed values may still introduce bias.
+
+### Impact of Missingness
+
+### Complete Case Analysis:
+
+ The complete case analysis excluded respondents with missing data, resulting in a proportion of 'yes' voters of approximately 59.57%. This approach can lead to biased results if the excluded individuals differ significantly from those included. For instance, younger individuals, who are more likely to support legalization, may also be more reluctant to disclose their voting preference, leading to an underestimation of support in the complete case analysis.
+
+### Imputed Data Analysis:
+
+ Imputing the missing data yielded a slightly higher proportion of 'yes' voters at 60.13%. This suggests that the missing responses, when accounted for, indicate a slightly stronger support for legalization. The logistic regression results from the imputed data were consistent with those from the complete case analysis, reinforcing the robustness of the findings. However, the high standard errors and non-significant results for certain gender categories in the imputed analysis highlight the limitations of imputing data for small subgroups.
+
+```{r}
+# Combine the results
+combined_results <- bind_rows(tidy_ref_model_complete, tidy_ref_model_imputed)
+
+# Filter out terms with very high standard errors for better visualization
+filtered_results <- combined_results %>%
+  filter(term %in% c("(Intercept)", "age", "genderFemale", "genderMale", "genderOther"))
+library(ggplot2)
+# Create the plot
+plot2 <- ggplot(filtered_results, aes(x = term, y = estimate, color = "data")) +
+  geom_point(position = position_dodge(width = 0.5), size = 3) +
+  geom_errorbar(aes(ymin = estimate - std.error, ymax = estimate + std.error),
+                position = position_dodge(width = 0.5), width = 0.25) +
+  labs(
+    title = "Comparison of Logistic Regression Results",
+    x = "Predictor",
+    y = "Estimate",
+    color = "Dataset"
+  ) +
+  theme_minimal() +
+  coord_flip()
+
+plot2
+```
+
